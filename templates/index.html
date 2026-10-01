@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Industrial Fire &amp; Smoke Detection AI</title>
+  <link rel="stylesheet" href="/api/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ── TOP NAV ─────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__icon">🔥</span>
+      <span class="topbar__title">Industrial Fire &amp; Smoke Detection AI</span>
+    </div>
+    <div class="topbar__meta">
+      <span id="systemStatus" class="badge badge--loading">● Loading models…</span>
+      <span id="gpuBadge"     class="badge badge--info"   style="display:none"></span>
+      <span class="topbar__clock" id="clock"></span>
+    </div>
+  </header>
+
+  <!-- ── ALERT BANNER (hidden until risk > CLEAR) ─────────────────────────── -->
+  <div id="alertBanner" class="alert-banner alert-banner--hidden" role="alert" aria-live="assertive"></div>
+
+  <!-- ── MAIN LAYOUT ───────────────────────────────────────────────────────── -->
+  <main class="layout">
+
+    <!-- LEFT: controls + upload ─────────────────────────────────────────── -->
+    <aside class="panel panel--left">
+
+      <section class="card">
+        <h2 class="card__title">Detection Mode</h2>
+        <div class="mode-tabs" role="tablist">
+          <button class="mode-tab mode-tab--active" role="tab" data-mode="image" aria-selected="true">Image</button>
+          <button class="mode-tab" role="tab" data-mode="video" aria-selected="false">Video</button>
+        </div>
+      </section>
+
+      <!-- Image upload -->
+      <section class="card" id="imagePanel">
+        <h2 class="card__title">Upload Image</h2>
+        <label class="dropzone" id="imageDropzone" for="imageInput" tabindex="0"
+               aria-label="Drop an image here or click to browse">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 16.5V19a2 2 0 002 2h14a2 2 0 002-2v-2.5M16 9l-4-4m0 0L8 9m4-4v12" />
+          </svg>
+          <span id="imageDropLabel">Drop image here or <u>browse</u></span>
+          <input type="file" id="imageInput" accept="image/*" hidden />
+        </label>
+        <button class="btn btn--primary" id="analyseImageBtn" disabled>Analyse Image</button>
+        <div class="progress" id="imageProgress" hidden>
+          <div class="progress__bar" id="imageProgressBar"></div>
+        </div>
+      </section>
+
+      <!-- Video upload -->
+      <section class="card" id="videoPanel" hidden>
+        <h2 class="card__title">Upload Video</h2>
+        <label class="dropzone" id="videoDropzone" for="videoInput" tabindex="0"
+               aria-label="Drop a video here or click to browse">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M12 18.75H4.5A2.25 2.25 0 012.25 16.5v-9A2.25 2.25 0 014.5 5.25H12a2.25 2.25 0 012.25 2.25v9A2.25 2.25 0 0112 18.75z" />
+          </svg>
+          <span id="videoDropLabel">Drop video here or <u>browse</u></span>
+          <input type="file" id="videoInput" accept="video/*" hidden />
+        </label>
+        <label class="field-label" for="maxFrames">Max frames to analyse
+          <input type="number" id="maxFrames" class="field-input" value="60" min="1" max="300" />
+        </label>
+        <button class="btn btn--primary" id="analyseVideoBtn" disabled>Analyse Video</button>
+        <div class="progress" id="videoProgress" hidden>
+          <div class="progress__bar" id="videoProgressBar"></div>
+        </div>
+      </section>
+
+      <!-- Confidence thresholds info -->
+      <section class="card">
+        <h2 class="card__title">Thresholds</h2>
+        <ul class="threshold-list">
+          <li><span class="dot dot--critical"></span> Critical  ≥ 55 %</li>
+          <li><span class="dot dot--warning"></span>  Warning   ≥ 30 %</li>
+          <li><span class="dot dot--caution"></span>  Caution   ≥ 10 %</li>
+          <li><span class="dot dot--clear"></span>    Clear     &lt; 10 %</li>
+        </ul>
+      </section>
+
+    </aside>
+
+    <!-- CENTRE: video / image viewer ────────────────────────────────────── -->
+    <section class="panel panel--centre">
+      <div class="viewer" id="viewer">
+        <div class="viewer__placeholder" id="viewerPlaceholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 3h18M3 21h18" />
+          </svg>
+          <p>Upload an image or video to start detection</p>
+        </div>
+        <img id="resultImage" class="viewer__img" alt="Detection result" hidden />
+
+        <!-- Video frame scrubber -->
+        <div class="scrubber" id="scrubber" hidden>
+          <button class="scrubber__btn" id="scrubberPrev" aria-label="Previous frame">&#8249;</button>
+          <input  type="range" id="frameSlider" min="0" value="0" class="scrubber__range" />
+          <button class="scrubber__btn" id="scrubberNext" aria-label="Next frame">&#8250;</button>
+          <span   class="scrubber__label" id="scrubberLabel">Frame 1 / 1</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: live stats ───────────────────────────────────────────────── -->
+    <aside class="panel panel--right">
+
+      <!-- Risk meter -->
+      <section class="card card--risk" id="riskCard">
+        <h2 class="card__title">Risk Level</h2>
+        <div class="risk-display" id="riskDisplay">
+          <div class="risk-ring" id="riskRing">
+            <span class="risk-ring__label" id="riskLabel">CLEAR</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Confidence bars -->
+      <section class="card">
+        <h2 class="card__title">Confidence</h2>
+        <div class="conf-row">
+          <span class="conf-label">Fire</span>
+          <div class="conf-bar-wrap">
+            <div class="conf-bar conf-bar--fire" id="fireBar" style="width:0%"></div>
+          </div>
+          <span class="conf-value" id="fireConf">0 %</span>
+        </div>
+        <div class="conf-row">
+          <span class="conf-label">Smoke</span>
+          <div class="conf-bar-wrap">
+            <div class="conf-bar conf-bar--smoke" id="smokeBar" style="width:0%"></div>
+          </div>
+          <span class="conf-value" id="smokeConf">0 %</span>
+        </div>
+      </section>
+
+      <!-- Detection counts -->
+      <section class="card">
+        <h2 class="card__title">Detections</h2>
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <span class="stat-cell__value" id="fireZones">0</span>
+            <span class="stat-cell__label">Fire Zones</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-cell__value" id="smokeZones">0</span>
+            <span class="stat-cell__label">Smoke Zones</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-cell__value" id="sceneObjs">0</span>
+            <span class="stat-cell__label">Scene Objects</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-cell__value" id="frameIdx">—</span>
+            <span class="stat-cell__label">Frame</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Alert log -->
+      <section class="card card--log">
+        <h2 class="card__title">Alert Log
+          <button class="btn btn--ghost btn--sm" id="clearLogBtn" style="float:right">Clear</button>
+        </h2>
+        <ul class="alert-log" id="alertLog" aria-label="Detection alert log" aria-live="polite">
+          <li class="alert-log__empty">No alerts yet.</li>
+        </ul>
+      </section>
+
+    </aside>
+  </main>
+
+  <!-- ── FOOTER ─────────────────────────────────────────────────────────────── -->
+  <footer class="footer">
+    Dev / Creator: <strong>tubakhxn</strong> &nbsp;|&nbsp;
+    <a href="https://github.com/tubakhxn" target="_blank" rel="noopener">github.com/tubakhxn</a>
+    &nbsp;|&nbsp; Industrial Fire &amp; Smoke Detection AI
+  </footer>
+
+  <script src="/api/static/js/main.js"></script>
+</body>
+</html>

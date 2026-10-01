@@ -1,38 +1,37 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# ──────────────────────────────────────────────────────────────────────────────
+#  Industrial Fire & Smoke Detection AI
+#  Azure Functions — Python 3.11 custom container image
+#
+#  Build:   docker build -t fire-smoke-detection .
+#  Run:     docker run -p 7071:80 fire-smoke-detection
+# ──────────────────────────────────────────────────────────────────────────────
 
-# Set working directory
-WORKDIR /app
+FROM mcr.microsoft.com/azure-functions/python:4-python3.11
 
-# Install system dependencies for OpenCV, GTK, and video handling
-RUN apt-get update && apt-get install -y \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    ffmpeg \
+# ── System deps for OpenCV (headless) + PyTorch ───────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-0 \
+        libgl1-mesa-glx \
+        libgomp1 \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# ── Python dependencies ────────────────────────────────────────────────────────
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# ── App code ───────────────────────────────────────────────────────────────────
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
-# Copy application code and model
-COPY app.py .
-COPY yolov8n.pt .
+WORKDIR /home/site/wwwroot
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser
-USER appuser
+COPY function_app.py    .
+COPY host.json          .
+COPY app.py             .
+COPY yolov8n.pt         .
+COPY templates/         ./templates/
+COPY static/            ./static/
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-
-# Expose port if needed (not used in this app, but kept for extensibility)
-# EXPOSE 8080
-
-# Run the application
-CMD ["python", "app.py"]
+# Azure Functions runtime listens on port 80 inside the container
+EXPOSE 80
